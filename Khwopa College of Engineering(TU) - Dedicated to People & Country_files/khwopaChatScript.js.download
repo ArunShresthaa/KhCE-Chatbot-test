@@ -1,0 +1,191 @@
+let userId;
+let isChatBoxOpened = false;
+let conversationHistory = [];
+let url = "https://chat.khwopa.edu.np/chat";
+
+$(document).ready(function () {
+    // Get userId from localStorage or generate a new one if it doesn't exist
+    userId = localStorage.getItem('chatUserId');
+    if (!userId) {
+        userId = uuidv4();
+        localStorage.setItem('chatUserId', userId);
+    }
+    
+    // Load conversation history if exists
+    try {
+        const savedHistory = localStorage.getItem('conversationHistory');
+        if (savedHistory) {
+            conversationHistory = JSON.parse(savedHistory);
+        }
+    } catch (e) {
+        console.error('Failed to parse conversation history from localStorage:', e);
+        conversationHistory = [];
+    }
+
+    // Load saved chat messages HTML
+    const savedMessagesHTML = localStorage.getItem('chatMessagesHTML');
+    if (savedMessagesHTML) {
+        $('#chat-box-body').html(savedMessagesHTML);
+        $('#chat-box-body').scrollTop($('#chat-box-body')[0].scrollHeight);
+        isChatBoxOpened = true; // Prevent duplicate welcome message
+    }
+
+    // Remove ripple effect from chat icon after 10 seconds
+    setTimeout(function () {
+        document.getElementById('chat-icon').classList.remove('ripple');
+    }, 100000);
+});
+
+function toggleChatBox() {
+    const chatBox = $('#chat-box');
+
+    if (chatBox.hasClass('open')) {
+        // If chatbox is open, close it by removing the 'open' class
+        chatBox.removeClass('open');
+
+        // Hide the chatbox after the transition completes
+        setTimeout(() => {
+            chatBox.css('display', 'none');
+        }, 400); // Match this duration with the CSS transition duration
+    } else {
+        // If chatbox is closed, display it first then apply the 'open' class
+        chatBox.css('display', 'flex');
+        setTimeout(() => {
+            chatBox.addClass('open');
+        }, 10); // Slight delay to allow display change to take effect
+    }
+
+    // Show a welcome message when opening the chatbox for the first time
+    if (!isChatBoxOpened) {
+        appendMessage('Hi, I am KhCE Chatbot. How can I assist you today?', 'bot');
+        isChatBoxOpened = true;
+    }
+}
+
+$('#send-button').click(function () {
+    sendQuery();
+});
+
+$('#chat-input').keypress(function (e) {
+    if (e.which === 13) {
+        sendQuery();
+    }
+});
+
+$('#options-button').click(function () {
+    $('#options-dropdown').toggle();
+});
+
+function sendAffirm() {
+    // clearMessageForms();
+    // let userMessage = "/affirm";
+    // requestServerForAnswer(userMessage);
+    appendMessage("We are not accepting messages for now. Please try again later.", 'bot');
+}
+
+function sendQuery() {
+    const userMessage = $('#chat-input').val();
+
+    if (userMessage.trim() !== '') {
+        appendMessage(userMessage, 'user');
+        $('#chat-input').val('');
+        requestServerForAnswer(userMessage);
+    }
+}
+
+function appendMessage(message, sender) {
+    let messageClass = sender === 'user' ? 'chat-message user' : 'chat-message bot';
+    let imageUrl = sender === 'bot' ? 'https://khwopa.edu.np/themes/khce_v2/images/bot.png' : '';
+    let imageTag = sender === 'bot' ? `<img src="${imageUrl}" alt="${sender} image">` : '';
+    let messageContent = `
+        <div class="${messageClass}">
+            ${imageTag}
+            <div class="message-content">
+                ${message}
+            </div>
+        </div>
+    `;
+    $('#chat-box-body').append(messageContent);
+    $('#chat-box-body').scrollTop($('#chat-box-body')[0].scrollHeight);
+
+    // Save updated chat messages HTML to localStorage
+    try {
+        localStorage.setItem('chatMessagesHTML', $('#chat-box-body').html());
+    } catch (e) {
+        console.error('Failed to save chat messages to localStorage:', e);
+    }
+}
+
+function requestServerForAnswer(userInput) {
+    let data = {
+        query: userInput,
+        history: conversationHistory,
+        sender: userId
+    };
+
+    let typingIndicator = `
+        <div class="chat-message bot typing-indicator-container">
+            <img src="https://khwopa.edu.np/themes/khce_v2/images/bot.png" alt="bot image">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>`;
+    $('#chat-box-body').append(typingIndicator);
+    $('#chat-box-body').scrollTop($('#chat-box-body')[0].scrollHeight);
+
+    $.ajax({
+        url: url,
+        data: JSON.stringify(data),
+        contentType: "application/json",
+        method: 'POST'
+    }).done(function (response) {
+        // Remove typing indicator when response is received
+        $('.typing-indicator-container').remove();
+        addBotResponseToChatBox(response);
+    }).fail(function () {
+        // Remove typing indicator in case of failure
+        $('.typing-indicator-container').remove();
+        const fallbackResponse = {
+            success: false,
+            query: "",
+            response: "I am facing some issues, Please try again later!<br>Email: <a href='mailto:info@khwopa.edu.np'>info@khwopa.edu.np</a><br>Phone: (+977) 1-5122094, 5122098"
+        };
+        addBotResponseToChatBox(fallbackResponse);
+    });
+}
+
+function addBotResponseToChatBox(response) {
+    appendMessage(response.response, 'bot');
+
+    if (response.success) {
+        // Add both user and assistant messages to history
+        conversationHistory.push({ user: response.query, assistant: response.response });
+
+        if (conversationHistory.length > 4) {
+            conversationHistory.shift();
+        }
+
+        // Save conversation history to localStorage
+        try {
+            localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
+        } catch (e) {
+            console.error('Failed to save conversation history to localStorage:', e);
+        }
+    }
+}
+
+function sendMessage(event) {
+    event.preventDefault();
+    const name = document.getElementById("name").value;
+    const email = document.getElementById("email").value;
+    const number = document.getElementById("number").value;
+    const message = document.getElementById("message").value;
+    const userInput = `NNNNN: ${name}, EEEEE: ${email}, NUNUNUNUNU:${number}, MMMMM: ${message}`;
+    requestServerForAnswer(userInput);
+    clearMessageForms();
+}
+
+function clearMessageForms() {
+    var messageForms = document.getElementsByClassName('messageForm');
+    for (var i = 0; i < messageForms.length; i++) {
+        messageForms[i].innerHTML = '';
+    }
+}
